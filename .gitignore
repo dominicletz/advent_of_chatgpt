@@ -22,3 +22,6 @@ erl_crash.dump
 # Ignore package tarball (built via "mix hex.build").
 advent_of_code_2020-*.tar
 
+/gpt_log
+/curl.log
+/gpt_request.json

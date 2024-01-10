@@ -9,10 +9,7 @@ defmodule GPT do
     "gpt-3.5-turbo-16k"
   ]
 
-  def query_fix_test_errors(module_file, test_file, error) do
-    module = File.read!(module_file)
-    test = File.read!(test_file)
-
+  def query_fix_test_errors(module, test, error) do
     [
       system: """
       You will be provided with a module of Elixir code, a corresponding test module and the result of running that test.
@@ -114,13 +111,23 @@ defmodule GPT do
     end
   end
 
+  defp new_logdir(base, n) do
+    logdir = "#{base}-#{n}"
+
+    if File.exists?(logdir) do
+      new_logdir(logdir, n + 1)
+    else
+      File.mkdir_p!(logdir)
+      logdir
+    end
+  end
+
   def apply_update(module_file, code, content, extra) do
     File.write!(module_file <> ".tmp", code)
 
     # Logging data
     {diff, _} = System.cmd("diff", ["-u3", module_file, module_file <> ".tmp"])
-    logdir = "gpt_log/#{System.system_time(:seconds)}/"
-    File.mkdir_p!(logdir)
+    logdir = new_logdir("gpt_log/#{System.system_time(:second)}", 0) <> "/"
 
     for {key, value} <- extra do
       File.write!("#{logdir}#{key}.log", value)
@@ -138,9 +145,9 @@ defmodule GPT do
     # Checking file
     File.rename!(module_file <> ".tmp", module_file)
 
-    case System.cmd("mix", ["compile", module_file]) do
+    case System.cmd("mix", ["compile", module_file], stderr_to_stdout: true) do
       {_, 0} ->
-        System.cmd("mix", ["format", module_file])
+        System.cmd("mix", ["format", module_file], stderr_to_stdout: true)
         :ok
 
       {error, _code} ->
@@ -150,12 +157,13 @@ defmodule GPT do
     end
   end
 
-  def improve_module(test_file, module_file) do
-    with {:error, error} <- run_test(test_file) do
-      IO.puts("Error is:\n#{error}")
-      {:ok, code, content} = query_fix_test_errors(module_file, test_file, error)
-      apply_update(module_file, code, content, error: error)
-    end
+  def improve_module(test_file, module_file, error) do
+    IO.puts("Error is:\n#{error}")
+
+    {:ok, code, content} =
+      query_fix_test_errors(File.read!(module_file), File.read!(test_file), error)
+
+    apply_update(module_file, code, content, error: error)
   end
 
   def run_test(test_file) do
@@ -175,6 +183,8 @@ end
 case System.argv() do
   ["score", module, iterations] ->
     test_file = "test/#{module}_test.exs"
+    test_content = File.read!(test_file)
+
     module_file = "lib/#{module}.ex"
     iterations = String.to_integer(iterations)
     module_content = File.read!(module_file)
@@ -184,28 +194,28 @@ case System.argv() do
       1..iterations
       |> Task.async_stream(
         fn _i ->
-          {:ok, _code, _content} = GPT.query_fix_test_errors(module_file, test_file, error)
+          {:ok, _code, _content} = GPT.query_fix_test_errors(module_content, test_content, error)
         end,
-        timeout: :infinity
+        timeout: :infinity,
+        ordered: false
       )
-      |> Enum.to_list()
       |> Enum.reduce({0, 0, 0}, fn {:ok, {:ok, code, content}}, {test_ok, compile_ok, not_ok} ->
         File.write!(module_file, module_content)
 
-        case GPT.apply_update(module_file, code, content, error: error) do
-          :ok ->
-            case GPT.run_test(test_file) do
-              :ok -> {test_ok + 1, compile_ok, not_ok}
-              _ -> {test_ok, compile_ok + 1, not_ok}
-            end
-
-          _ ->
-            {test_ok, compile_ok, not_ok + 1}
+        if :ok == GPT.apply_update(module_file, code, content, error: error) do
+          if :ok == GPT.run_test(test_file) do
+            {test_ok + 1, compile_ok, not_ok}
+          else
+            {test_ok, compile_ok + 1, not_ok}
+          end
+        else
+          {test_ok, compile_ok, not_ok + 1}
         end
       end)
 
     File.write!(module_file, module_content)
-    IO.puts("#{module} score: #{inspect score}/#{iterations}")
+    File.write!("score.txt", "#{module} score: #{inspect(score)}/#{iterations}\n", [:append])
+    IO.puts("#{module} score: #{inspect(score)}/#{iterations}")
 
   ["test", module, iterations] ->
     test_file = "test/#{module}_test.exs"
@@ -215,8 +225,13 @@ case System.argv() do
     for x <- 1..iterations do
       IO.puts("Iteration #{x}")
 
-      if :ok == GPT.improve_module(test_file, module_file) do
-        System.halt(0)
+      case GPT.run_test(test_file) do
+        :ok ->
+          IO.puts("Tests pass!")
+          System.halt(0)
+
+        {:error, error} ->
+          GPT.improve_module(test_file, module_file, error)
       end
     end
 
