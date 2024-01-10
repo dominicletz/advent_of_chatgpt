@@ -133,7 +133,7 @@ defmodule GPT do
     File.write!("#{logdir}#{Path.basename(module_file)}.new", code)
 
     # Reporting diff
-    IO.puts(diff)
+    # IO.puts(diff)
 
     # Checking file
     File.rename!(module_file <> ".tmp", module_file)
@@ -182,22 +182,30 @@ case System.argv() do
 
     score =
       1..iterations
-      |> Task.async_stream(fn _i ->
-        {:ok, _code, _content} = GPT.query_fix_test_errors(module_file, test_file, error)
-      end, timeout: :infinity)
+      |> Task.async_stream(
+        fn _i ->
+          {:ok, _code, _content} = GPT.query_fix_test_errors(module_file, test_file, error)
+        end,
+        timeout: :infinity
+      )
       |> Enum.to_list()
-      |> Enum.map(fn {:ok, {:ok, code, content}} ->
+      |> Enum.reduce({0, 0, 0}, fn {:ok, {:ok, code, content}}, {test_ok, compile_ok, not_ok} ->
         File.write!(module_file, module_content)
-        GPT.apply_update(module_file, code, content, error: error)
 
-        case GPT.run_test(test_file) do
-          :ok -> 1
-          _ -> 0
+        case GPT.apply_update(module_file, code, content, error: error) do
+          :ok ->
+            case GPT.run_test(test_file) do
+              :ok -> {test_ok + 1, compile_ok, not_ok}
+              _ -> {test_ok, compile_ok + 1, not_ok}
+            end
+
+          _ ->
+            {test_ok, compile_ok, not_ok + 1}
         end
       end)
-      |> Enum.sum()
 
-    IO.puts("#{module} score: #{score}")
+    File.write!(module_file, module_content)
+    IO.puts("#{module} score: #{inspect score}/#{iterations}")
 
   ["test", module, iterations] ->
     test_file = "test/#{module}_test.exs"
