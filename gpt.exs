@@ -163,7 +163,7 @@ defmodule GPT do
     {:ok, code, content} =
       query_fix_test_errors(File.read!(module_file), File.read!(test_file), error)
 
-    apply_update(module_file, code, content, error: error)
+    apply_update(module_file, code, content, prev_error: error)
   end
 
   def run_test(test_file) do
@@ -183,18 +183,18 @@ defmodule GPT do
     :given_up
   end
 
-  def score(module_file, original_module_content, module_content, test_file, error, n) do
+  def score(module_file, prev_module_content, test_file, error, n) do
     {:ok, module_content, debug_content} =
-      GPT.query_fix_test_errors(module_content, File.read!(test_file), error)
+      GPT.query_fix_test_errors(prev_module_content, File.read!(test_file), error)
 
     # Tests are run on disk an we need to avoid that two runs
     # update and test day1.ex at the same time
     Agent.get(
       :tester,
       fn nil ->
-        File.write!(module_file, original_module_content)
+        File.write!(module_file, prev_module_content)
 
-        if :ok == GPT.apply_update(module_file, module_content, debug_content, error: error) do
+        if :ok == GPT.apply_update(module_file, module_content, debug_content, prev_error: error) do
           case GPT.run_test(test_file) do
             :ok -> {:done, n}
             {:error, error} -> {:cont, error}
@@ -210,7 +210,7 @@ defmodule GPT do
         ret
 
       {:cont, error} ->
-        score(module_file, original_module_content, module_content, test_file, error, n - 1)
+        score(module_file, module_content, test_file, error, n - 1)
     end
   end
 end
