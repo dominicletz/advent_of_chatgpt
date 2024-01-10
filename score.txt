@@ -1,2 +1,5 @@
 day1 score: {9, 35, 6}/50
 day1 score: {9, 34, 7}/50
+day2 score: {2, 44, 4}/50
+day1 score: [1, 3, 2, 2, 2] / 10
+day1 score: [17, 11, 5, 2, 5, 10] / 50

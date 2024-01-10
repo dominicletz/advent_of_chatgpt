@@ -178,44 +178,82 @@ defmodule GPT do
     {:ok, code, content} = query_update_module(module_file, instruction)
     apply_update(module_file, code, content, instruction: instruction)
   end
+
+  def score(_module_file, _original_module_content, _module_content, _test_content, _error, 0) do
+    :given_up
+  end
+
+  def score(module_file, original_module_content, module_content, test_file, error, n) do
+    {:ok, module_content, debug_content} =
+      GPT.query_fix_test_errors(module_content, File.read!(test_file), error)
+
+    # Tests are run on disk an we need to avoid that two runs
+    # update and test day1.ex at the same time
+    Agent.get(
+      :tester,
+      fn nil ->
+        File.write!(module_file, original_module_content)
+
+        if :ok == GPT.apply_update(module_file, module_content, debug_content, error: error) do
+          case GPT.run_test(test_file) do
+            :ok -> {:done, n}
+            {:error, error} -> {:cont, error}
+          end
+        else
+          {:done, :compile_failed}
+        end
+      end,
+      :infinity
+    )
+    |> case do
+      {:done, ret} ->
+        ret
+
+      {:cont, error} ->
+        score(module_file, original_module_content, module_content, test_file, error, n - 1)
+    end
+  end
 end
 
 case System.argv() do
-  ["score", module, iterations] ->
-    test_file = "test/#{module}_test.exs"
-    test_content = File.read!(test_file)
+  ["score", module, iterations, depth] ->
+    Agent.start_link(fn -> nil end, name: :tester)
 
+    test_file = "test/#{module}_test.exs"
     module_file = "lib/#{module}.ex"
+    original_module_content = File.read!(module_file)
+
     iterations = String.to_integer(iterations)
-    module_content = File.read!(module_file)
+    depth = String.to_integer(depth)
     {:error, error} = GPT.run_test(test_file)
 
     score =
       1..iterations
       |> Task.async_stream(
         fn _i ->
-          {:ok, _code, _content} = GPT.query_fix_test_errors(module_content, test_content, error)
+          GPT.score(
+            module_file,
+            original_module_content,
+            original_module_content,
+            test_file,
+            error,
+            depth
+          )
         end,
         timeout: :infinity,
         ordered: false
       )
-      |> Enum.reduce({0, 0, 0}, fn {:ok, {:ok, code, content}}, {test_ok, compile_ok, not_ok} ->
-        File.write!(module_file, module_content)
-
-        if :ok == GPT.apply_update(module_file, code, content, error: error) do
-          if :ok == GPT.run_test(test_file) do
-            {test_ok + 1, compile_ok, not_ok}
-          else
-            {test_ok, compile_ok + 1, not_ok}
-          end
-        else
-          {test_ok, compile_ok, not_ok + 1}
-        end
+      |> Enum.reduce(%{}, fn {:ok, ret}, map ->
+        Map.put(map, ret, Map.get(map, ret, 0) + 1)
       end)
 
-    File.write!(module_file, module_content)
-    File.write!("score.txt", "#{module} score: #{inspect(score)}/#{iterations}\n", [:append])
-    IO.puts("#{module} score: #{inspect(score)}/#{iterations}")
+    File.write!(module_file, original_module_content)
+    keys = Enum.to_list(depth..1) ++ [:given_up, :compile_failed]
+    score = Enum.map(keys, fn x -> Map.get(score, x, 0) end)
+    result = "#{module} score: #{inspect(score)} / #{iterations}"
+
+    File.write!("score.txt", "#{result}\n", [:append])
+    IO.puts("#{result}")
 
   ["test", module, iterations] ->
     test_file = "test/#{module}_test.exs"
