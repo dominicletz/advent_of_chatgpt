@@ -1,4 +1,6 @@
 defmodule Day1Test do
+  use ExUnit.Case
+
   test "check day 1" do
     assert Day1.evaluate("""
            1abc2

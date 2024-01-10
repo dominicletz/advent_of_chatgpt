@@ -1,32 +1,7 @@
 #!/bin/env elixir
-Mix.install([
-  {:openai, "~> 0.6.0"}
-])
-
-Application.ensure_all_started(:openai)
-# :hackney_trace.enable(:max, :io)
-:ok = :hackney_pool.start_pool(:my_pool, timeout: 360_000, max_connections: 1)
-my_pool_pid = :hackney_pool.find_pool(:my_pool)
-
-# connection_port =
-#   :erlang.ports()
-#   |> Enum.find(
-#     fn port ->
-#        port_info = :erlang.port_info(port)
-#        port_info[:connected] == my_pool_pid
-#      end
-#     )
-# {:ok, file_descriptor} = :prim_inet.getfd(connection_port)
+Mix.install([:jason])
 
 defmodule GPT do
-  def config_override() do
-    %OpenAI.Config{
-      api_key: System.get_env("OPENAI_API_KEY"),
-      organization_key: System.get_env("OPENAI_API_ORG", nil),
-      http_options: [recv_timeout: 360_000, hackney: [pool: :my_pool]]
-    }
-  end
-
   @default_models [
     "gpt-4-1106-preview",
     "gpt-4-1106-preview",
@@ -100,12 +75,6 @@ defmodule GPT do
         query(request, models ++ [model])
     end
   end
-
-  # defp chat_completion(request) do
-  #   with %{choices: [%{"message" => %{"content" => content}}]} <- OpenAI.chat_completion(request, config_override()) do
-  #     {:ok, content}
-  #   end
-  # end
 
   defp chat_completion(request) do
     with {ret, 0} <-
@@ -183,7 +152,7 @@ defmodule GPT do
     case System.cmd("mix", ["test", test_file], stderr_to_stdout: true) do
       {_, 0} ->
         IO.puts("Test passed")
-        exit(0)
+        System.halt()
 
       {error, _code} ->
         IO.puts("Error is:\n#{error}")
@@ -214,4 +183,12 @@ case System.argv() do
   ["update", module | instruction] ->
     module_file = "lib/#{module}.ex"
     GPT.update_module(module_file, Enum.join(instruction, " "))
+
+  _other ->
+    IO.puts("""
+      SYNTAX:
+
+      gpt test <module_name> <number of iterations>
+      gpt update <module_name> <instructions>
+    """)
 end
