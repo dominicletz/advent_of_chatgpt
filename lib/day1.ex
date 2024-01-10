@@ -26,7 +26,7 @@ defmodule Day1 do
   Consider your entire calibration document. What is the sum of all of the calibration values?
   """
 
-  def evaluate(input) do
+  def evaluate(_input) do
     # implement
   end
 end

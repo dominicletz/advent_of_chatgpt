@@ -65,7 +65,7 @@ defmodule Day13 do
   Find the line of reflection in each of the patterns in your notes. What number do you get after summarizing all of your notes?
   """
 
-  def evaluate(input) do
+  def evaluate(_input) do
     # implement
   end
 end

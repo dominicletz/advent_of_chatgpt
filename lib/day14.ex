@@ -56,7 +56,7 @@ defmodule Day14 do
   Tilt the platform so that the rounded rocks all roll north. Afterward, what is the total load on the north support beams?
   """
 
-  def evaluate(input) do
+  def evaluate(_input) do
     # implement
   end
 end

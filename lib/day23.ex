@@ -69,7 +69,7 @@ defmodule Day23 do
   Find the longest hike you can take through the hiking trails listed on your map. How many steps long is the longest hike?
   """
 
-  def evaluate(input) do
+  def evaluate(_input) do
     # implement
   end
 end

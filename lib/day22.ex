@@ -123,7 +123,7 @@ defmodule Day22 do
   Figure how the blocks will settle based on the snapshot. Once they've settled, consider disintegrating a single brick; how many bricks could be safely chosen as the one to get disintegrated?
   """
 
-  def evaluate(input) do
+  def evaluate(_input) do
     # implement
   end
 end

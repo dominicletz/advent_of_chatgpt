@@ -32,7 +32,7 @@ defmodule Day3 do
   Of course, the actual engine schematic is much larger. What is the sum of all of the part numbers in the engine schematic?
   """
 
-  def evaluate(input) do
+  def evaluate(_input) do
     # implement
   end
 end

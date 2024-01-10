@@ -47,7 +47,7 @@ defmodule Day6 do
   Determine the number of ways you could beat the record in each race. What do you get if you multiply these numbers together?
   """
 
-  def evaluate(input) do
+  def evaluate(_input) do
     # implement
   end
 end

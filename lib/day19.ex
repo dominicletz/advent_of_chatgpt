@@ -57,7 +57,7 @@ defmodule Day19 do
   Sort through all of the parts you've been given; what do you get if you add together all of the rating numbers for all of the parts that ultimately get accepted?
   """
 
-  def evaluate(input) do
+  def evaluate(_input) do
     # implement
   end
 end

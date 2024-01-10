@@ -57,7 +57,7 @@ defmodule Day7 do
   Find the rank of every hand in your set. What are the total winnings?
   """
 
-  def evaluate(input) do
+  def evaluate(_input) do
     # implement
   end
 end

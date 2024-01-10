@@ -35,7 +35,7 @@ defmodule Day8 do
   Starting at AAA, follow the left/right instructions. How many steps are required to reach ZZZ?
   """
 
-  def evaluate(input) do
+  def evaluate(_input) do
     # implement
   end
 end

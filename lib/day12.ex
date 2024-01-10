@@ -76,7 +76,7 @@ defmodule Day12 do
   For each row, count all of the different arrangements of operational and broken springs that meet the given criteria. What is the sum of those counts?
   """
 
-  def evaluate(input) do
+  def evaluate(_input) do
     # implement
   end
 end

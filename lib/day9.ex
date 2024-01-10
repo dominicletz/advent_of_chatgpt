@@ -75,7 +75,7 @@ defmodule Day9 do
   Analyze your OASIS report and extrapolate the next value for each history. What is the sum of these extrapolated values?
   """
 
-  def evaluate(input) do
+  def evaluate(_input) do
     # implement
   end
 end

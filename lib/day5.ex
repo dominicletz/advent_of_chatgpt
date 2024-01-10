@@ -102,7 +102,7 @@ defmodule Day5 do
   What is the lowest location number that corresponds to any of the initial seed numbers?
   """
 
-  def evaluate(input) do
+  def evaluate(_input) do
     # implement
   end
 end

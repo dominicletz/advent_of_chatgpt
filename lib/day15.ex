@@ -70,7 +70,7 @@ defmodule Day15 do
   Run the HASH algorithm on each step in the initialization sequence. What is the sum of the results? (The initialization sequence is one long line; be careful when copy-pasting it.)
   """
 
-  def evaluate(input) do
+  def evaluate(_input) do
     # implement
   end
 end

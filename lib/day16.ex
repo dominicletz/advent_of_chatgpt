@@ -63,7 +63,7 @@ defmodule Day16 do
   The light isn't energizing enough tiles to produce lava; to debug the contraption, you need to start by analyzing the current situation. With the beam starting in the top-left heading right, how many tiles end up being energized?
   """
 
-  def evaluate(input) do
+  def evaluate(_input) do
     # implement
   end
 end

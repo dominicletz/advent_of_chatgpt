@@ -55,7 +55,7 @@ defmodule Day17 do
   Directing the crucible from the lava pool to the machine parts factory, but not moving more than three consecutive blocks in the same direction, what is the least heat loss it can incur?
   """
 
-  def evaluate(input) do
+  def evaluate(_input) do
     # implement
   end
 end

@@ -114,7 +114,7 @@ defmodule GPT do
     end
   end
 
-  defp apply_update(module_file, code, content, extra) do
+  def apply_update(module_file, code, content, extra) do
     File.write!(module_file <> ".tmp", code)
 
     # Logging data
@@ -141,23 +141,27 @@ defmodule GPT do
     case System.cmd("mix", ["compile", module_file]) do
       {_, 0} ->
         System.cmd("mix", ["format", module_file])
+        :ok
 
       {error, _code} ->
         IO.puts("Compile error - reverting file: \n#{error}")
         File.write!(module_file, old_code)
+        {:error, error}
     end
   end
 
   def improve_module(test_file, module_file) do
-    case System.cmd("mix", ["test", test_file], stderr_to_stdout: true) do
-      {_, 0} ->
-        IO.puts("Test passed")
-        System.halt()
+    with {:error, error} <- run_test(test_file) do
+      IO.puts("Error is:\n#{error}")
+      {:ok, code, content} = query_fix_test_errors(module_file, test_file, error)
+      apply_update(module_file, code, content, error: error)
+    end
+  end
 
-      {error, _code} ->
-        IO.puts("Error is:\n#{error}")
-        {:ok, code, content} = query_fix_test_errors(module_file, test_file, error)
-        apply_update(module_file, code, content, error: error)
+  def run_test(test_file) do
+    case System.cmd("mix", ["test", test_file], stderr_to_stdout: true) do
+      {_, 0} -> :ok
+      {error, _code} -> {:error, error}
     end
   end
 
@@ -168,8 +172,33 @@ defmodule GPT do
   end
 end
 
-
 case System.argv() do
+  ["score", module, iterations] ->
+    test_file = "test/#{module}_test.exs"
+    module_file = "lib/#{module}.ex"
+    iterations = String.to_integer(iterations)
+    module_content = File.read!(module_file)
+    {:error, error} = GPT.run_test(test_file)
+
+    score =
+      1..iterations
+      |> Task.async_stream(fn _i ->
+        {:ok, _code, _content} = GPT.query_fix_test_errors(module_file, test_file, error)
+      end, timeout: :infinity)
+      |> Enum.to_list()
+      |> Enum.map(fn {:ok, {:ok, code, content}} ->
+        File.write!(module_file, module_content)
+        GPT.apply_update(module_file, code, content, error: error)
+
+        case GPT.run_test(test_file) do
+          :ok -> 1
+          _ -> 0
+        end
+      end)
+      |> Enum.sum()
+
+    IO.puts("#{module} score: #{score}")
+
   ["test", module, iterations] ->
     test_file = "test/#{module}_test.exs"
     module_file = "lib/#{module}.ex"
@@ -177,7 +206,10 @@ case System.argv() do
 
     for x <- 1..iterations do
       IO.puts("Iteration #{x}")
-      GPT.improve_module(test_file, module_file)
+
+      if :ok == GPT.improve_module(test_file, module_file) do
+        System.halt(0)
+      end
     end
 
   ["update", module | instruction] ->

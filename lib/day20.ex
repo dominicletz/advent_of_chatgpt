@@ -115,7 +115,7 @@ defmodule Day20 do
 
   """
 
-  def evaluate(input) do
+  def evaluate(_input) do
     # implement
   end
 end

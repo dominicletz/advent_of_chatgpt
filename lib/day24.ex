@@ -69,7 +69,7 @@ defmodule Day24 do
   Considering only the X and Y axes, check all pairs of hailstones' future paths for intersections. How many of these intersections occur within the test area?
   """
 
-  def evaluate(input) do
+  def evaluate(_input) do
     # implement
   end
 end

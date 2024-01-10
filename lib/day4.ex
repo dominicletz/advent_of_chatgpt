@@ -38,7 +38,7 @@ defmodule Day4 do
   Take a seat in the large pile of colorful cards. How many points are they worth in total?
   """
 
-  def evaluate(input) do
+  def evaluate(_input) do
     # implement
   end
 end

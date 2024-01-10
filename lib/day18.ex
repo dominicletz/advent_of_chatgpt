@@ -54,7 +54,7 @@ defmodule Day18 do
   The Elves are concerned the lagoon won't be large enough; if they follow their dig plan, how many cubic meters of lava could it hold?
   """
 
-  def evaluate(input) do
+  def evaluate(_input) do
     # implement
   end
 end

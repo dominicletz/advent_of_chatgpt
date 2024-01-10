@@ -98,7 +98,7 @@ defmodule Day11 do
   Expand the universe, then find the length of the shortest path between every pair of galaxies. What is the sum of these lengths?
   """
 
-  def evaluate(input) do
+  def evaluate(_input) do
     # implement
   end
 end

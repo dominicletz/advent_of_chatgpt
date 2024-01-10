@@ -83,7 +83,7 @@ defmodule Day21 do
   In this example, if the Elf's goal was to get exactly 6 more steps today, he could use them to reach any of 16 garden plots.
   """
 
-  def evaluate(input) do
+  def evaluate(_input) do
     # implement
   end
 end
