@@ -13,9 +13,9 @@ defmodule GPT do
     [
       system: """
       You will be provided with a module of Elixir code, a corresponding test module and the result of running that test.
-      Your task is return the updated Elixir module code following its moduledocs intent so that the tests will pass and the warnings are
+      Your task is to return the updated Elixir module code following its moduledocs intent so that the tests will pass and the warnings are
       fixed and unimplemented methods are implemented.
-      Provide the full source code of the module and only the source code. Do not abbreviate the code use ... or similiar, but output the full module.
+      Provide the full source code of the module and only the source code. Do not abbreviate the code using ... or similar, but output the full module.
       """,
       user:
         "The Elixir module:\n```elixir\n#{module}\n```\n\nThe test:\n```elixir\n#{test}\n```\n\nThe test output:\n```bash\n#{error}\n```"
@@ -74,17 +74,9 @@ defmodule GPT do
   end
 
   defp chat_completion(request) do
-    with {ret, 0} <-
-           System.cmd("curl", [
-             "https://api.openai.com/v1/chat/completions",
-             "-H",
-             "Content-Type: application/json",
-             "-H",
-             "Authorization: Bearer #{System.get_env("OPENAI_API_KEY")}",
-             "-d",
-             Jason.encode!(Map.new(request))
-           ]) do
+    with {time, {ret, 0}} <- curl("https://api.openai.com/v1/chat/completions", Jason.encode!(Map.new(request))) do
       File.write!("curl.log", ret)
+      IO.puts("curl request took #{div(time, 1000)/1000}s")
 
       ret =
         String.split(ret, "\n\n", trim: true)
@@ -109,6 +101,19 @@ defmodule GPT do
       {_, code} ->
         {:error, "Curl exit #{code}"}
     end
+  end
+
+  defp curl(url, json) do
+    :timer.tc(fn -> System.cmd("curl", [
+      url,
+      "-s",
+      "-H",
+      "Content-Type: application/json",
+      "-H",
+      "Authorization: Bearer #{System.get_env("OPENAI_API_KEY")}",
+      "-d",
+      json
+    ]) end)
   end
 
   defp new_logdir(base, n) do
@@ -179,7 +184,7 @@ defmodule GPT do
     apply_update(module_file, code, content, instruction: instruction)
   end
 
-  def score(_module_file, _original_module_content, _module_content, _test_content, _error, 0) do
+  def score(_module_file, _module_content, _test_content, _error, 0) do
     :given_up
   end
 
@@ -234,12 +239,12 @@ case System.argv() do
           GPT.score(
             module_file,
             original_module_content,
-            original_module_content,
             test_file,
             error,
             depth
           )
         end,
+        max_concurrency: iterations,
         timeout: :infinity,
         ordered: false
       )
