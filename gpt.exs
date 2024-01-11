@@ -11,27 +11,32 @@ defmodule GPT do
 
   def query_fix_test_errors(module, test, error) do
     [
-      system: """
-      You will be provided with a module of Elixir code, a corresponding test module and the result of running that test.
-      Your task is to update the Elixir module code following its moduledocs intent so that the tests will pass and the warnings are fixed and unimplemented methods are implemented.
-      Provide a minimal patch in git diff format so it can be applied with `git apply` to the provided Elixir module.
-      """,
-      user: """
-      The Elixir module:
-      ```elixir
-      #{module}
-      ```
+      system:
+        """
+        #{character()}
+        You will be provided with a module of Elixir code, a corresponding test module and the result of running that test.
+        Your task is to update the Elixir module code following its moduledocs intent so that the tests will pass and the warnings are fixed and unimplemented methods are implemented.
+        Provide #{format()}
+        """
+        |> String.trim(),
+      user:
+        """
+        The Elixir module:
+        ```elixir
+        #{module}
+        ```
 
-      The test:
-      ```elixir
-      #{test}
-      ```
+        The test:
+        ```elixir
+        #{test}
+        ```
 
-      The test output:
-      ```bash
-      #{error}
-      ```
-      """
+        The test output:
+        ```bash
+        #{error}
+        ```
+        """
+        |> String.trim()
     ]
     |> query(module)
   end
@@ -40,14 +45,37 @@ defmodule GPT do
     module = File.read!(module_file)
 
     [
-      system: """
-      You will be provided with a module of Elixir code, and an instruction to update the code.
-      Your task is return the updated Elixir module according to the instruction.
-      Provide the full source code of the updated module and only the source code. Do not abbreviate the code using ... or similiar, but output the full module.
-      """,
-      user: "The Elixir module:\n```elixir\n#{module}\n```\n\nThe instruction:\n#{instruction}"
+      system:
+        """
+        #{character()}
+        You will be provided with a module of Elixir code, and an instruction to update the code.
+        Your task is return the updated Elixir module according to the instruction.
+        Provide #{format()}
+        """
+        |> String.trim(),
+      user:
+        """
+        The Elixir module:
+        ```elixir
+        #{module}
+        ```
+
+        The instruction:
+        #{instruction}
+        """
+        |> String.trim()
     ]
     |> query(module)
+  end
+
+  defp character() do
+    # ""
+    ""
+  end
+
+  defp format() do
+    # "a minimal patch in git diff format so it can be applied with `git apply` to the provided Elixir module."
+    "the full source code of the updated module and only the source code. Do not abbreviate the code using ... or similiar, but output the full module."
   end
 
   defp query(request, module, [model | models] \\ @default_models) do
@@ -75,13 +103,18 @@ defmodule GPT do
             write_logdir("gpt_patch.diff", String.trim(diff) <> "\n")
             write_logdir("gpt_patch.ex", module)
 
-            case System.cmd("patch", [logdir("gpt_patch.ex"), logdir("gpt_patch.diff")]) do
+            # unfortunately, GPT often returns wrong hunk numbers, so we're using -F10 and -c
+            case System.cmd("patch", [
+                   "-F10",
+                   logdir("gpt_patch.ex"),
+                   logdir("gpt_patch.diff")
+                 ]) do
               {_, 0} ->
                 {:ok, File.read!(logdir("gpt_patch.ex")), content}
 
               {error, _} ->
                 IO.puts("GPT Patch error: #{error}")
-                query(request, models ++ [model])
+                query(request, module, models ++ [model])
             end
 
           _ ->
@@ -94,22 +127,22 @@ defmodule GPT do
                   "GPT Error: No code found in response #{inspect(content)} => #{inspect(other)}, retrying with model: #{model}..."
                 )
 
-                query(request, models ++ [model])
+                query(request, module, models ++ [model])
             end
         end
 
       {:error, reason} ->
         elapsed = System.os_time(:millisecond) - now
         IO.puts("GPT Error after #{elapsed / 1000}s: #{reason}, retrying with model: #{model}...")
-        query(request, models ++ [model])
+        query(request, module, models ++ [model])
     end
   end
 
   defp chat_completion(request) do
     with {time, {ret, 0}} <-
            curl("https://api.openai.com/v1/chat/completions", Jason.encode!(Map.new(request))) do
-      File.write!("curl.log", ret)
-      IO.puts("curl request took #{div(time, 1000) / 1000}s")
+      write_logdir("curl.log", ret)
+      IO.puts("request #{logdir()} took #{div(time, 1000) / 1000}s")
 
       ret =
         String.split(ret, "\n\n", trim: true)
@@ -131,8 +164,8 @@ defmodule GPT do
 
       {:ok, ret}
     else
-      {_, code} ->
-        {:error, "Curl exit #{code}"}
+      {_time, {_, code}} ->
+        {:error, "Curl exit #{inspect(code)}"}
     end
   end
 
@@ -212,28 +245,25 @@ defmodule GPT do
 
   def score(module_file, prev_module_content, test_file, error, n) do
     {:ok, module_content, debug_content} =
-      GPT.query_fix_test_errors(prev_module_content, File.read!(test_file), error)
+      query_fix_test_errors(prev_module_content, File.read!(test_file), error)
 
     logdir = logdir()
+    IO.inspect(logdir)
     # Tests are run on disk an we need to avoid that two runs
     # update and test day1.ex at the same time
-    Agent.get(
-      :tester,
-      fn nil ->
-        set_logdir(logdir)
-        File.write!(module_file, prev_module_content)
+    sync(fn ->
+      set_logdir(logdir)
+      File.write!(module_file, prev_module_content)
 
-        if :ok == GPT.apply_update(module_file, module_content, debug_content, prev_error: error) do
-          case GPT.run_test(test_file) do
-            :ok -> {:done, n}
-            {:error, error} -> {:cont, error}
-          end
-        else
-          {:done, :compile_failed}
+      if :ok == GPT.apply_update(module_file, module_content, debug_content, prev_error: error) do
+        case GPT.run_test(test_file) do
+          :ok -> {:done, n}
+          {:error, error} -> {:cont, error}
         end
-      end,
-      :infinity
-    )
+      else
+        {:done, :compile_failed}
+      end
+    end)
     |> case do
       {:done, ret} ->
         ret
@@ -247,10 +277,17 @@ defmodule GPT do
   defp new_logdir(base \\ "gpt_log/#{System.os_time(:second)}", n \\ 0) do
     logdir = "#{base}-#{n}"
 
-    if File.exists?(logdir) do
+    sync(fn ->
+      if File.exists?(logdir) do
+        true
+      else
+        File.mkdir_p!(logdir)
+        false
+      end
+    end)
+    |> if do
       new_logdir(base, n + 1)
     else
-      File.mkdir_p!(logdir)
       set_logdir(logdir)
     end
   end
@@ -266,6 +303,10 @@ defmodule GPT do
 
   def logdir(filename \\ "") do
     Path.join(Process.get(@logdir_key), filename)
+  end
+
+  defp sync(fun) do
+    Agent.get(:tester, fn _ -> fun.() end, :infinity)
   end
 end
 
