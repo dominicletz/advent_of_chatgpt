@@ -13,8 +13,8 @@ defmodule GPT do
     [
       system: """
       You will be provided with a module of Elixir code, a corresponding test module and the result of running that test.
-      Your task is to return the updated Elixir module code following its moduledocs intent so that the tests will pass and the warnings are fixed and unimplemented methods are implemented.
-      Provide the full source code of the module and only the source code. Do not abbreviate the code using ... or similar, but output the full module.
+      Your task is to update the Elixir module code following its moduledocs intent so that the tests will pass and the warnings are fixed and unimplemented methods are implemented.
+      Provide a minimal patch in git diff format so it can be applied with `git apply` to the provided Elixir module.
       """,
       user: """
       The Elixir module:
@@ -33,7 +33,7 @@ defmodule GPT do
       ```
       """
     ]
-    |> query()
+    |> query(module)
   end
 
   def query_update_module(module_file, instruction) do
@@ -43,14 +43,14 @@ defmodule GPT do
       system: """
       You will be provided with a module of Elixir code, and an instruction to update the code.
       Your task is return the updated Elixir module according to the instruction.
-      Provide the full source code of the updated module and only the source code. Do not abbreviate the code use ... or similiar, but output the full module.
+      Provide the full source code of the updated module and only the source code. Do not abbreviate the code using ... or similiar, but output the full module.
       """,
       user: "The Elixir module:\n```elixir\n#{module}\n```\n\nThe instruction:\n#{instruction}"
     ]
-    |> query()
+    |> query(module)
   end
 
-  defp query(request, [model | models] \\ @default_models) do
+  defp query(request, module, [model | models] \\ @default_models) do
     raw_request = [
       stream: true,
       model: model,
@@ -60,23 +60,42 @@ defmodule GPT do
       ]
     ]
 
-    File.write!("gpt_request.json", inspect(raw_request, pretty: true, limit: :infinity))
+    new_logdir()
+    write_logdir("gpt_request.json", inspect(raw_request, pretty: true, limit: :infinity))
     now = System.os_time(:millisecond)
 
     raw_request
     |> chat_completion()
     |> case do
       {:ok, content} ->
-        case Regex.run(~r/```elixir\n(.*)\n```/s, content) do
-          [_, code] ->
-            {:ok, code <> "\n", content}
+        write_logdir("gpt_response.json", inspect(content, pretty: true, limit: :infinity))
 
-          other ->
-            IO.puts(
-              "GPT Error: No code found in response #{inspect(content)} => #{inspect(other)}, retrying with model: #{model}..."
-            )
+        case Regex.run(~r/```diff\n(.*)[\n ]```/s, content) do
+          [_, diff] ->
+            write_logdir("gpt_patch.diff", String.trim(diff) <> "\n")
+            write_logdir("gpt_patch.ex", module)
 
-            query(request, models ++ [model])
+            case System.cmd("patch", [logdir("gpt_patch.ex"), logdir("gpt_patch.diff")]) do
+              {_, 0} ->
+                {:ok, File.read!(logdir("gpt_patch.ex")), content}
+
+              {error, _} ->
+                IO.puts("GPT Patch error: #{error}")
+                query(request, models ++ [model])
+            end
+
+          _ ->
+            case Regex.run(~r/```elixir\n(.*)\n```/s, content) do
+              [_, code] ->
+                {:ok, code <> "\n", content}
+
+              other ->
+                IO.puts(
+                  "GPT Error: No code found in response #{inspect(content)} => #{inspect(other)}, retrying with model: #{model}..."
+                )
+
+                query(request, models ++ [model])
+            end
         end
 
       {:error, reason} ->
@@ -132,43 +151,30 @@ defmodule GPT do
     end)
   end
 
-  defp new_logdir(base, n) do
-    logdir = "#{base}-#{n}"
-
-    if File.exists?(logdir) do
-      new_logdir(logdir, n + 1)
-    else
-      File.mkdir_p!(logdir)
-      logdir
-    end
-  end
-
   def apply_update(module_file, code, content, extra) do
     File.write!(module_file <> ".tmp", code)
 
     # Logging data
     {diff, _} = System.cmd("diff", ["-u3", module_file, module_file <> ".tmp"])
-    logdir = new_logdir("gpt_log/#{System.system_time(:second)}", 0) <> "/"
 
     for {key, value} <- extra do
-      File.write!("#{logdir}#{key}.log", value)
+      write_logdir("extra_#{key}.log", value)
     end
 
-    File.write!("#{logdir}diff.log", diff)
-    File.write!("#{logdir}response.log", content)
+    write_logdir("diff.log", diff)
+    write_logdir("response.log", content)
     old_code = File.read!(module_file)
-    File.write!("#{logdir}#{Path.basename(module_file)}", old_code)
-    File.write!("#{logdir}#{Path.basename(module_file)}.new", code)
-
-    # Reporting diff
-    # IO.puts(diff)
+    write_logdir(Path.basename(module_file), old_code)
+    write_logdir(Path.basename(module_file), code)
 
     # Checking file
     File.rename!(module_file <> ".tmp", module_file)
+    write_logdir(Path.basename(module_file), code)
 
     case System.cmd("mix", ["compile", module_file], stderr_to_stdout: true) do
       {_, 0} ->
         System.cmd("mix", ["format", module_file], stderr_to_stdout: true)
+        write_logdir(Path.basename(module_file), File.read!(module_file))
         :ok
 
       {error, _code} ->
@@ -208,11 +214,13 @@ defmodule GPT do
     {:ok, module_content, debug_content} =
       GPT.query_fix_test_errors(prev_module_content, File.read!(test_file), error)
 
+    logdir = logdir()
     # Tests are run on disk an we need to avoid that two runs
     # update and test day1.ex at the same time
     Agent.get(
       :tester,
       fn nil ->
+        set_logdir(logdir)
         File.write!(module_file, prev_module_content)
 
         if :ok == GPT.apply_update(module_file, module_content, debug_content, prev_error: error) do
@@ -233,6 +241,31 @@ defmodule GPT do
       {:cont, error} ->
         score(module_file, module_content, test_file, error, n - 1)
     end
+  end
+
+  @logdir_key :gpt_logdir
+  defp new_logdir(base \\ "gpt_log/#{System.os_time(:second)}", n \\ 0) do
+    logdir = "#{base}-#{n}"
+
+    if File.exists?(logdir) do
+      new_logdir(base, n + 1)
+    else
+      File.mkdir_p!(logdir)
+      set_logdir(logdir)
+    end
+  end
+
+  def set_logdir(logdir) do
+    Process.put(@logdir_key, logdir)
+    logdir
+  end
+
+  def write_logdir(filename, content) do
+    File.write!(logdir(filename), content)
+  end
+
+  def logdir(filename \\ "") do
+    Path.join(Process.get(@logdir_key), filename)
   end
 end
 
