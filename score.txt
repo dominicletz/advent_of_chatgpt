@@ -32,8 +32,14 @@ day9 score: [0, 0, 0, 1, 5, 44] / 50
 
 == USD 50$ ==
 day1 score: [14, 32, 4] / 50
+Jose
 day1 score: [10, 35, 5] / 50
 day1 score: [13, 34, 3] / 50
+
+Expert
 day1 score: [14, 33, 3] / 50
+
+Please please
 day1 score: [8, 37, 5] / 50
-day1 score: '\v \a' / 50
+Please
+day1 score: [11 32 7] / 50
