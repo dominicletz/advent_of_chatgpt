@@ -15,7 +15,7 @@ defmodule GPT do
         """
         #{character()}
         You will be provided with a module of Elixir code, a corresponding test module and the result of running that test.
-        Your task is to update the Elixir module code following its moduledocs intent so that the tests will pass and the warnings are fixed and unimplemented methods are implemented.
+        Your task is to update the Elixir module code following its moduledocs intent so that the tests will pass and the warnings are fixed and unimplemented methods are implemented. You'd better be sure.
         Provide #{format()}
         """
         |> String.trim(),
@@ -35,6 +35,9 @@ defmodule GPT do
         ```bash
         #{error}
         ```
+
+        Getting this right is very important to my career
+
         """
         |> String.trim()
     ]
@@ -229,7 +232,9 @@ defmodule GPT do
   def run_test(test_file) do
     case System.cmd("mix", ["test", test_file], stderr_to_stdout: true) do
       {_, 0} -> :ok
-      {error, _code} -> {:error, error}
+      {error, _code} ->
+        write_logdir("error.log", error)
+        {:error, error}
     end
   end
 
@@ -298,7 +303,9 @@ defmodule GPT do
   end
 
   def write_logdir(filename, content) do
-    File.write!(logdir(filename), content)
+    if Process.get(@logdir_key) != nil do
+      File.write!(logdir(filename), content)
+    end
   end
 
   def logdir(filename \\ "") do
@@ -310,9 +317,9 @@ defmodule GPT do
   end
 end
 
+Agent.start_link(fn -> nil end, name: :tester)
 case System.argv() do
   ["score", module, iterations, depth] ->
-    Agent.start_link(fn -> nil end, name: :tester)
 
     test_file = "test/#{module}_test.exs"
     module_file = "lib/#{module}.ex"

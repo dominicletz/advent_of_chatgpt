@@ -1,3 +1,5 @@
+Format is
+dayX score: [pass1, pass2, passN, stopped, compilation_errors] / total
 
 day1 score: [9, 35, 6] / 50
 day1 score: [9, 34, 7] / 50
@@ -31,15 +33,16 @@ day9 score: [1, 1, 0, 0, 1, 47] / 50
 day9 score: [0, 0, 0, 1, 5, 44] / 50
 
 == USD 50$ ==
-day1 score: [14, 32, 4] / 50
-Jose
-day1 score: [10, 35, 5] / 50
-day1 score: [13, 34, 3] / 50
 
-Expert
+Base:
 day1 score: [14, 33, 3] / 50
+day1 score: [14, 32, 4] / 50
 
-Please please
-day1 score: [8, 37, 5] / 50
-Please
-day1 score: [11 32 7] / 50
+You are Jose:
+day1 score: [10, 35, 5] / 50
+
+Emotional GPT:
+day1 score: [12, 32, 6] / 50
+
+Diff GPT
+day1 score: [3, 15, 32] / 50
