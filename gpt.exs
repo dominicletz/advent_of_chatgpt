@@ -15,7 +15,7 @@ defmodule GPT do
         """
         #{character()}
         You will be provided with a module of Elixir code, a corresponding test module and the result of running that test.
-        Your task is to update the Elixir module code following its moduledocs intent so that the tests will pass and the warnings are fixed and unimplemented methods are implemented. You'd better be sure.
+        Your task is to update the Elixir module code following its moduledocs intent so that the tests will pass and the warnings are fixed and unimplemented methods are implemented.
         Provide #{format()}
         """
         |> String.trim(),
@@ -101,7 +101,7 @@ defmodule GPT do
       {:ok, content} ->
         write_logdir("gpt_response.json", inspect(content, pretty: true, limit: :infinity))
 
-        case Regex.run(~r/```diff\n(.*)[\n ]```/s, content) do
+        case Regex.run(~r/```diff\n(.*?)```/s, content) do
           [_, diff] ->
             write_logdir("gpt_patch.diff", String.trim(diff) <> "\n")
             write_logdir("gpt_patch.ex", module)
@@ -121,7 +121,7 @@ defmodule GPT do
             end
 
           _ ->
-            case Regex.run(~r/```elixir\n(.*)\n```/s, content) do
+            case Regex.run(~r/```elixir\n(.*?)```/s, content) do
               [_, code] ->
                 {:ok, code <> "\n", content}
 
@@ -214,7 +214,7 @@ defmodule GPT do
         :ok
 
       {error, _code} ->
-        IO.puts("Compile error - reverting file: \n#{error}")
+        write_logdir("compile_error.log", error)
         File.write!(module_file, old_code)
         {:error, error}
     end
@@ -233,7 +233,7 @@ defmodule GPT do
     case System.cmd("mix", ["test", test_file], stderr_to_stdout: true) do
       {_, 0} -> :ok
       {error, _code} ->
-        write_logdir("error.log", error)
+        write_logdir("test_error.log", error)
         {:error, error}
     end
   end
